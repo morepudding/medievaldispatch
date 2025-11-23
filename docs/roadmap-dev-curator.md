@@ -9,45 +9,87 @@
 
 Cette roadmap liste **nos tâches développeur** pour exploiter le contenu généré par le curator. Chaque phase du curator (`roadmapcuratorv2.md`) nécessite des adaptations techniques de notre côté.
 
-**Principe** : Le curator génère du contenu riche → nous adaptons le code pour l'afficher/utiliser correctement.
+**Principe** : Le curator génère du contenu riche et **le dépose directement dans la DB Supabase** → nous adaptons le code pour l'afficher/utiliser correctement.
+
+**Important** : Le curator a un accès direct en écriture à la DB (tables de contenu uniquement, pas les saves joueurs).
 
 ---
 
 ## 🚀 PHASE 1 DEV : Préparer l'intégration du contenu enrichi
 
-### 1.1 Scripts de migration SQL
+**Note** : Le curator UPDATE/INSERT directement dans la DB. Nos tâches = adapter le code pour exploiter ces nouvelles données.
 
-**Besoin** : Remplacer le contenu placeholder par le contenu curator
+### 1.1 Configuration accès DB Curator
 
-**Tâches** :
-- [ ] Créer `prisma/migrations/update_heroes_content.sql`
-  - UPDATE des 5 héros avec nouvelles descriptions/lore
-  - Prévoir champs longs (description 200 mots, lore 400 mots)
-  
-- [ ] Créer `prisma/migrations/update_missions_content.sql`
-  - UPDATE des 15 missions avec textes enrichis
-  - success_text/failure_text peuvent être longs (500 chars)
-  
-- [ ] Créer `prisma/migrations/update_dialogues_content.sql`
-  - UPDATE des 3 dialogues existants
-  - INSERT des 4-5 nouveaux dialogues
-  
-- [ ] Créer `prisma/migrations/update_buildings_content.sql`
-  - UPDATE des 5 bâtiments avec descriptions atmosphériques
+**Tâche** : Créer un user curator avec permissions restreintes
+
+**Script SQL** : `prisma/setup/curator_permissions.sql`
+```sql
+-- Créer role curator avec accès limité
+CREATE ROLE curator_role;
+
+-- Tables de CONTENU (read/write)
+GRANT SELECT, INSERT, UPDATE ON heroes TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON hero_images TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON missions TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON dialogues TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON dialogue_exchanges TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON buildings TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON building_levels TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON locations TO curator_role;
+
+-- Tables de SAVE (interdit)
+REVOKE ALL ON game_saves FROM curator_role;
+REVOKE ALL ON player_heroes FROM curator_role;
+REVOKE ALL ON player_buildings FROM curator_role;
+REVOKE ALL ON player_dialogues FROM curator_role;
+REVOKE ALL ON mission_completions FROM curator_role;
+
+-- Créer user curator
+CREATE USER curator_pipeline WITH PASSWORD 'CHANGE_ME';
+GRANT curator_role TO curator_pipeline;
+```
 
 **Commandes** :
 ```bash
-# Après réception contenu curator
-psql $DATABASE_URL -f prisma/migrations/update_heroes_content.sql
-psql $DATABASE_URL -f prisma/migrations/update_missions_content.sql
-# etc.
+# Exécuter sur DB dev
+psql $DATABASE_URL -f prisma/setup/curator_permissions.sql
+
+# Générer credentials pour le curator
+echo "DATABASE_URL_CURATOR=postgresql://curator_pipeline:PASSWORD@db.xxx.supabase.co:6543/postgres"
+```
+
+**À fournir au curator** :
+- `DATABASE_URL_CURATOR` (connexion avec permissions limitées)
+- Documentation schéma tables (`docs/database.md`)
+
+---
+
+### 1.2 Scripts de migration SQL ~~(SUPPRIMÉ)~~
+
+~~**Besoin** : Remplacer le contenu placeholder par le contenu curator~~
+
+**⚠️ PLUS NÉCESSAIRE** : Le curator fait les UPDATE/INSERT lui-même directement dans la DB.
+
+**Notre rôle** : Juste valider que le contenu est bien arrivé.
+
+**Commandes de vérification** :
+```bash
+# Vérifier héros enrichis
+psql $DATABASE_URL -c "SELECT slug, LENGTH(description), LENGTH(lore) FROM heroes;"
+
+# Vérifier dialogues créés
+psql $DATABASE_URL -c "SELECT COUNT(*) FROM dialogues GROUP BY unlock_day;"
+
+# Vérifier missions enrichies
+psql $DATABASE_URL -c "SELECT slug, LENGTH(success_text) FROM missions LIMIT 5;"
 ```
 
 ---
 
-### 1.2 Extension du schéma Prisma (nouveaux champs)
+### 1.3 Extension du schéma Prisma (nouveaux champs)
 
-**Besoin** : Stocker les nouvelles données du curator
+**Besoin** : Préparer le schéma pour les nouvelles données que le curator va insérer
 
 **Modifications `prisma/schema.prisma`** :
 
@@ -119,7 +161,7 @@ npm run prisma:generate
 
 ---
 
-### 1.3 API routes pour nouveau contenu
+### 1.4 API routes pour nouveau contenu
 
 **Besoin** : Exposer les nouvelles données au front
 
@@ -201,7 +243,7 @@ export async function GET(
 
 ---
 
-### 1.4 Composants UI pour afficher contenu enrichi
+### 1.5 Composants UI pour afficher contenu enrichi
 
 #### A) `app/components/HeroLoreModal.tsx` (NOUVEAU)
 
@@ -278,7 +320,7 @@ useEffect(() => {
 
 ---
 
-### 1.5 Système de narrative flags
+### 1.6 Système de narrative flags
 
 **Besoin** : Tracker la progression narrative du joueur
 
@@ -637,13 +679,15 @@ interface MissionChoiceModalProps {
 ## 📋 CHECKLIST DEV
 
 ### Phase 1 (contenu enrichi de base)
-- [ ] Scripts SQL migration (heroes, missions, dialogues, buildings)
+- [ ] Configuration accès DB curator (user + permissions)
+- [ ] Fournir credentials DATABASE_URL_CURATOR au curator
 - [ ] Extension schéma Prisma (nouveaux champs)
 - [ ] API routes (relationships, full, variants)
 - [ ] HeroLoreModal (nouveau composant)
 - [ ] MissionDetailModal (améliorer)
 - [ ] BuildingInfoModal (améliorer)
 - [ ] Table NarrativeFlag + API
+- [ ] Validation contenu curator en DB (queries test)
 
 ### Phase 2 (portraits + ambient)
 - [ ] DialogueModal (portraits émotionnels)
@@ -662,11 +706,12 @@ interface MissionChoiceModalProps {
 
 ## ⏱️ Estimation temps
 
-**Phase 1** : ~8-12h
-- Migrations SQL : 2h
+**Phase 1** : ~6-10h (réduit de 8-12h)
+- Configuration DB curator : 1h
 - Schéma Prisma : 2h
 - API routes : 2h
 - Composants UI : 4-6h
+- Validation : 1h
 
 **Phase 2** : ~6-8h
 - Portraits émotionnels : 3h
@@ -676,10 +721,10 @@ interface MissionChoiceModalProps {
 - Système flags/déblocage : 4-6h
 - Missions interactives : 6-9h
 
-**Total** : ~24-35h de dev pour exploiter pleinement le contenu curator
+**Total** : ~20-30h de dev pour exploiter pleinement le contenu curator (réduit grâce au dépôt direct DB)
 
 ---
 
 **Dernière mise à jour** : 23 novembre 2025  
-**Version** : 1.0  
-**Statut** : PRÊT À DÉMARRER (après réception contenu Phase 1 du curator)
+**Version** : 1.1 - Curator dépose directement dans DB  
+**Statut** : PRÊT À DÉMARRER (configurer accès curator d'abord)

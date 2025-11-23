@@ -55,6 +55,7 @@
 3. 🎨 Écrire des dialogues riches et character-driven
 4. 🎨 Imaginer des missions narratives complexes
 5. 🎨 Créer l'univers et le lore du jeu
+6. 🗄️ **Déposer le contenu DIRECTEMENT dans la DB Supabase** (UPDATE/INSERT SQL)
 
 ---
 
@@ -411,26 +412,133 @@ Failure: "L'embuscade était un piège. Aldric perd sa cargaison mais survit - d
 
 ## 📞 WORKFLOW AVEC LE CURATOR
 
+**Important** : Le curator a un accès direct à la DB Supabase pour déposer son contenu.
+
+### Accès DB Curator
+
+**Connexion fournie** :
+- **DATABASE_URL** : Connexion poolée (lecture/écriture)
+- **Tables autorisées** : `heroes`, `hero_images`, `missions`, `dialogues`, `dialogue_exchanges`, `buildings`, `building_levels`, `locations`
+- **Tables INTERDITES** : `game_saves`, `player_*`, `mission_completions` (tables de sauvegarde joueur)
+
+**Méthode de livraison** :
+1. Curator génère le contenu (textes + images)
+2. Curator exécute UPDATE SQL pour remplacer le contenu placeholder
+3. Curator INSERT SQL pour nouveaux dialogues/échanges
+4. Curator upload images dans Supabase Storage (`/portraits/`, `/lieux/`)
+5. Notification à l'équipe dev (contenu prêt)
+
+---
+
 ### Étape 1 : Brief initial (nous → curator)
-- Envoyer ce document complet
-- Specs des 5 héros (stats, rôles actuels)
-- État actuel du contenu (exemples)
-- Style attendu (références)
+- ✅ Envoyer ce document complet
+- ✅ Fournir DATABASE_URL (avec droits write sur tables contenu)
+- ✅ Fournir credentials Supabase Storage
+- ✅ Specs des 5 héros (stats, rôles actuels)
+- ✅ État actuel du contenu (exemples)
+- ✅ Style attendu (références)
 
-### Étape 2 : Génération itérative (curator → nous)
+### Étape 2 : Génération et dépôt direct (curator)
 - **Batch 1** : Bible narrative + 5 héros complets
-- **Validation** : On valide cohérence/style
+  - Curator UPDATE `heroes` table (description, lore)
+  - Curator exécute validation SQL (check cohérence)
+  - Notification : "Héros enrichis ✓"
+  
 - **Batch 2** : Dialogues jour 1-2-3
-- **Validation**
+  - Curator UPDATE dialogues existants (amélioration)
+  - Curator INSERT nouveaux dialogues + exchanges
+  - Validation SQL (check foreign keys, order)
+  - Notification : "Dialogues complets ✓"
+  
 - **Batch 3** : 15 missions enrichies
-- **Validation**
-- **Batch 4** : Bâtiments + ambient texts
+  - Curator UPDATE `missions` (title, description, success_text, failure_text)
+  - Validation : lengths, required_stats cohérence
+  - Notification : "Missions enrichies ✓"
+  
+- **Batch 4** : Bâtiments + images
+  - Curator UPDATE `buildings` (description, atmosphere, etc.)
+  - Curator upload portraits dans Storage
+  - INSERT `hero_images` pour nouveaux portraits
+  - Notification : "Bâtiments + assets ✓"
 
-### Étape 3 : Intégration (nous)
-- Scripts de migration SQL
-- Update des entries existantes
-- Tests narratifs
-- Ajustements si nécessaire
+### Étape 3 : Validation et tests (nous)
+- ✅ Vérifier contenu en DB (queries SQL)
+- ✅ Tester affichage in-game
+- ✅ Valider cohérence narrative
+- ✅ Feedback au curator si ajustements nécessaires
+
+**Avantages de ce workflow** :
+- ⚡ Pas de scripts intermédiaires à maintenir
+- ⚡ Curator contrôle la qualité directement en DB
+- ⚡ Updates incrémentales possibles
+- ⚡ Rollback facile (snapshots Supabase)
+
+---
+
+## 🔒 Sécurité et contrôles
+
+**Permissions curator (Supabase RLS à configurer)** :
+```sql
+-- Créer un role curator
+CREATE ROLE curator_role;
+
+-- Donner accès aux tables de contenu uniquement
+GRANT SELECT, INSERT, UPDATE ON heroes TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON hero_images TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON missions TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON dialogues TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON dialogue_exchanges TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON buildings TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON building_levels TO curator_role;
+GRANT SELECT, INSERT, UPDATE ON locations TO curator_role;
+
+-- INTERDIRE l'accès aux saves joueurs
+REVOKE ALL ON game_saves FROM curator_role;
+REVOKE ALL ON player_heroes FROM curator_role;
+REVOKE ALL ON player_buildings FROM curator_role;
+REVOKE ALL ON player_dialogues FROM curator_role;
+REVOKE ALL ON mission_completions FROM curator_role;
+
+-- Créer user curator
+CREATE USER curator_user WITH PASSWORD 'secure_password';
+GRANT curator_role TO curator_user;
+```
+
+**Validation automatique (triggers SQL)** :
+```sql
+-- Empêcher modification des IDs existants
+CREATE OR REPLACE FUNCTION prevent_id_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.id != OLD.id THEN
+    RAISE EXCEPTION 'ID modification forbidden';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER heroes_no_id_change
+  BEFORE UPDATE ON heroes
+  FOR EACH ROW EXECUTE FUNCTION prevent_id_change();
+
+-- Valider longueur textes
+CREATE OR REPLACE FUNCTION validate_text_length()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF LENGTH(NEW.description) > 1000 THEN
+    RAISE EXCEPTION 'Description too long (max 1000 chars)';
+  END IF;
+  IF LENGTH(NEW.lore) > 2000 THEN
+    RAISE EXCEPTION 'Lore too long (max 2000 chars)';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER heroes_validate_length
+  BEFORE INSERT OR UPDATE ON heroes
+  FOR EACH ROW EXECUTE FUNCTION validate_text_length();
+```
 
 ---
 
