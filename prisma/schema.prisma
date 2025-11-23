@@ -1,0 +1,281 @@
+// Medieval Dispatch - Prisma Schema
+// Base de données Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================
+// TABLES DE CONTENU (Gérées par le CMS)
+// ============================================
+
+// Héros jouables
+model Hero {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  name        String
+  title       String
+  description String
+  lore        String      @db.Text
+  
+  // Stats de base
+  strength    Int         @default(0)
+  diplomacy   Int         @default(0)
+  stealth     Int         @default(0)
+  intelligence Int        @default(0)
+  
+  // Méta
+  is_active   Boolean     @default(true)
+  created_at  DateTime    @default(now())
+  updated_at  DateTime    @updatedAt
+  
+  // Relations
+  images      HeroImage[]
+  dialogues   Dialogue[]
+  player_heroes PlayerHero[]
+  
+  @@map("heroes")
+}
+
+// Images associées aux héros
+model HeroImage {
+  id         String   @id @default(cuid())
+  hero_id    String
+  image_type String   // 'portrait_full', 'icon', 'happy', 'sad', 'angry', 'neutral'
+  url        String   // URL Supabase Storage
+  is_default Boolean  @default(false)
+  created_at DateTime @default(now())
+  
+  hero       Hero     @relation(fields: [hero_id], references: [id], onDelete: Cascade)
+  
+  @@unique([hero_id, image_type, is_default])
+  @@map("hero_images")
+}
+
+// Lieux de la carte
+model Location {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  image_url   String    // URL Supabase Storage
+  position_x  Float     // Position X en % (0-100)
+  position_y  Float     // Position Y en % (0-100)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  
+  missions    Mission[]
+  
+  @@map("locations")
+}
+
+// Missions disponibles dans le jeu
+model Mission {
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  title            String
+  description      String   @db.Text
+  location_id      String
+  
+  // Timing
+  day              Int      // 1, 2, 3
+  spawn_time       Int      // Heure d'apparition (0-23)
+  duration         Int      // Durée en heures
+  
+  // Stats requises
+  required_strength     Int @default(0)
+  required_diplomacy    Int @default(0)
+  required_stealth      Int @default(0)
+  required_intelligence Int @default(0)
+  
+  // Récompenses
+  reward_gold      Int      @default(0)
+  reward_reputation Int     @default(0)
+  
+  // Résolution
+  success_text     String   @db.Text
+  failure_text     String   @db.Text
+  
+  // Override position (optionnel)
+  override_position_x Float?
+  override_position_y Float?
+  
+  // Méta
+  is_active        Boolean  @default(true)
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+  
+  location         Location @relation(fields: [location_id], references: [id])
+  completions      MissionCompletion[]
+  
+  @@map("missions")
+}
+
+// Dialogues avec les héros
+model Dialogue {
+  id         String            @id @default(cuid())
+  hero_id    String
+  unlock_day Int               // Jour où le dialogue se débloque
+  order      Int               @default(0) // Ordre d'affichage
+  created_at DateTime          @default(now())
+  updated_at DateTime          @updatedAt
+  
+  hero       Hero              @relation(fields: [hero_id], references: [id], onDelete: Cascade)
+  exchanges  DialogueExchange[]
+  player_dialogues PlayerDialogue[]
+  
+  @@unique([hero_id, unlock_day, order])
+  @@map("dialogues")
+}
+
+// Échanges dans un dialogue
+model DialogueExchange {
+  id          String   @id @default(cuid())
+  dialogue_id String
+  order       Int      // Ordre dans le dialogue
+  speaker     String   // 'hero' ou 'player'
+  text        String   @db.Text
+  emotion     String?  // 'happy', 'sad', 'angry', 'neutral', etc.
+  image_type  String?  // Type d'image du héros à afficher
+  created_at  DateTime @default(now())
+  
+  dialogue    Dialogue @relation(fields: [dialogue_id], references: [id], onDelete: Cascade)
+  
+  @@unique([dialogue_id, order])
+  @@map("dialogue_exchanges")
+}
+
+// Bâtiments constructibles
+model Building {
+  id          String          @id @default(cuid())
+  slug        String          @unique
+  name        String
+  description String          @db.Text
+  icon        String?         // Emoji ou URL
+  created_at  DateTime        @default(now())
+  updated_at  DateTime        @updatedAt
+  
+  levels      BuildingLevel[]
+  player_buildings PlayerBuilding[]
+  
+  @@map("buildings")
+}
+
+// Niveaux de bâtiments
+model BuildingLevel {
+  id              String   @id @default(cuid())
+  building_id     String
+  level           Int
+  cost_gold       Int
+  cost_reputation Int
+  description     String   @db.Text // Description des bonus
+  created_at      DateTime @default(now())
+  
+  building        Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
+  
+  @@unique([building_id, level])
+  @@map("building_levels")
+}
+
+// ============================================
+// TABLES DE SAUVEGARDE (Gérées par le jeu)
+// ============================================
+
+// Sauvegarde de partie
+model GameSave {
+  id              String           @id @default(cuid())
+  player_name     String           @default("Joueur")
+  current_day     Int              @default(1)
+  current_time    Int              @default(8) // Heure actuelle (0-23)
+  gold            Int              @default(100)
+  reputation      Int              @default(50)
+  last_saved_at   DateTime         @updatedAt
+  created_at      DateTime         @default(now())
+  
+  // Relations
+  player_heroes   PlayerHero[]
+  player_buildings PlayerBuilding[]
+  player_dialogues PlayerDialogue[]
+  mission_completions MissionCompletion[]
+  
+  @@map("game_saves")
+}
+
+// État des héros pour une sauvegarde
+model PlayerHero {
+  id              String   @id @default(cuid())
+  save_id         String
+  hero_id         String
+  
+  // Stats actuelles
+  current_strength     Int
+  current_diplomacy    Int
+  current_stealth      Int
+  current_intelligence Int
+  
+  // État
+  is_available    Boolean  @default(true)
+  is_on_mission   Boolean  @default(false)
+  mission_end_time Int?    // Heure de fin de mission
+  
+  // Méta
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  
+  save            GameSave @relation(fields: [save_id], references: [id], onDelete: Cascade)
+  hero            Hero     @relation(fields: [hero_id], references: [id])
+  
+  @@unique([save_id, hero_id])
+  @@map("player_heroes")
+}
+
+// État des bâtiments pour une sauvegarde
+model PlayerBuilding {
+  id          String   @id @default(cuid())
+  save_id     String
+  building_id String
+  level       Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  
+  save        GameSave @relation(fields: [save_id], references: [id], onDelete: Cascade)
+  building    Building @relation(fields: [building_id], references: [id])
+  
+  @@unique([save_id, building_id])
+  @@map("player_buildings")
+}
+
+// Dialogues lus par le joueur
+model PlayerDialogue {
+  id          String   @id @default(cuid())
+  save_id     String
+  dialogue_id String
+  read_at     DateTime @default(now())
+  
+  save        GameSave @relation(fields: [save_id], references: [id], onDelete: Cascade)
+  dialogue    Dialogue @relation(fields: [dialogue_id], references: [id])
+  
+  @@unique([save_id, dialogue_id])
+  @@map("player_dialogues")
+}
+
+// Missions complétées
+model MissionCompletion {
+  id            String   @id @default(cuid())
+  save_id       String
+  mission_id    String
+  success       Boolean
+  completed_at  DateTime @default(now())
+  
+  save          GameSave @relation(fields: [save_id], references: [id], onDelete: Cascade)
+  mission       Mission  @relation(fields: [mission_id], references: [id])
+  
+  @@unique([save_id, mission_id])
+  @@map("mission_completions")
+}

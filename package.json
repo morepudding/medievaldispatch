@@ -1,0 +1,30 @@
+{
+  "name": "mediavaldispatch",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "migrate:heroes": "tsx scripts/migrate-heroes.ts",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.0.0",
+    "@prisma/client": "^5.22.0",
+    "dotenv": "^17.2.3",
+    "next": "^14.2.0",
+    "pg": "^8.16.3",
+    "prisma": "^5.22.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.3.0"
+  }
+}
