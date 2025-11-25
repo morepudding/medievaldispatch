@@ -21,7 +21,8 @@ Medieval Dispatch est un jeu de gestion RPG en temps réel fonctionnel, dévelop
 
 **Limitations** :
 - ⚠️ Base de données contient **données de test limitées** (5 héros, 15 missions, 3 dialogues selon databaseroadmap.md)
-- ⚠️ Pipeline contenu (AI Curator) documenté mais séparé du développement
+- ⚠️ Héros ont placeholders génériques - **Sprint 1 Curator en préparation** (enrichissement D&D 5e)
+- ⚠️ Pipeline contenu (AI Curator) documenté et infrastructure DB prête
 - ⚠️ Certaines features documentées comme "TERMINÉ" mais doivent être validées en runtime
 
 ---
@@ -846,17 +847,24 @@ interface VillageHeroPlacement {
   - Ajouter script `check-db` : `node check-db.js`
   - Tester setup complet sur machine fraîche
 
-### Semaine 4-5 : Enrichissement Contenu
-- [ ] **Établir workflow avec AI Curator**
-  - Créer specs enrichissement pour 5 héros existants
-  - Documenter format JSON attendu (input/output)
-  - Tester workflow avec 1 héros pilote
-- [ ] **Enrichir contenu héros**
-  - Bjorn : Background, personnalité, motivations
-  - Owen : Backstory, traits, arc narratif
-  - Vi : Histoire, compétences uniques
-  - Durun : Lore, relations avec autres héros
-  - Elira : Développement personnage complet
+### Semaine 4-5 : Enrichissement Contenu ✅ STRUCTURE CRÉÉE (24 nov 2025)
+- [x] **Établir workflow avec AI Curator**
+  - ✅ Document workflow complet créé (`docs/curator/workflow-dev-curator.md`)
+  - ✅ Architecture multi-niveaux de curation définie (textes, images, dialogues, missions)
+  - ✅ Format JSON de sortie spécifié
+  - ✅ Première spec créée : `curator-spec-heroes-enrichment.md` (42 pages)
+- [x] **Créer structure DB pour multi-résolutions images**
+  - ✅ Table `hero_image_variants` créée (base_type, resolution, emotion, usage_context)
+  - ✅ Champs narratifs ajoutés à `heroes` (voice, secret, arc_day1/2/3)
+  - ✅ Champs atmosphériques ajoutés à `buildings` (atmosphere, npc_name, npc_description, secret)
+  - ✅ Migration appliquée sur Supabase DEV
+- [ ] **Enrichir contenu héros** (EN ATTENTE CURATOR)
+  - Bjorn : Background, personnalité, motivations + 6 images
+  - Owen : Backstory, traits, arc narratif + 6 images
+  - Vi : Histoire, compétences uniques + 6 images
+  - Durun : Lore, relations avec autres héros + 6 images
+  - Elira : Développement personnage complet + 6 images
+  - **Total attendu** : 30 images (5 portraits émotionnels + 1 icône par héros)
 - [ ] **Compléter dialogues jour 1**
   - 2 dialogues supplémentaires (total 5 héros)
   - Validation cohérence narrative

@@ -8,7 +8,14 @@
     "start": "next start",
     "lint": "next lint",
     "migrate:heroes": "tsx scripts/migrate-heroes.ts",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "npx prisma generate",
+    "prisma:migrate": "npx prisma migrate dev",
+    "prisma:studio": "npx prisma studio",
+    "prisma:push": "npx prisma db push",
+    "prisma:status": "npx prisma migrate status",
+    "db:check": "node check-db.js",
+    "db:seed": "npx prisma db seed",
+    "postinstall": "npx prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",

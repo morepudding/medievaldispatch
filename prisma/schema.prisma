@@ -24,11 +24,36 @@ model Hero {
   description String
   lore        String      @db.Text
   
-  // Stats de base
+  // Textes narratifs
+  voice       String?     @db.Text
+  secret      String?     @db.Text
+  arc_day1    String?     @db.Text
+  arc_day2    String?     @db.Text
+  arc_day3    String?     @db.Text
+  
+  // Stats de base (mécaniques jeu)
   strength    Int         @default(0)
   diplomacy   Int         @default(0)
   stealth     Int         @default(0)
   intelligence Int        @default(0)
+  
+  // Stats D&D 5e
+  dnd_strength     Int?
+  dnd_dexterity    Int?
+  dnd_constitution Int?
+  dnd_intelligence Int?
+  dnd_wisdom       Int?
+  dnd_charisma     Int?
+  
+  // Informations D&D
+  level              Int?
+  race               String?
+  class              String?
+  background         String?
+  personality_traits String[]
+  ideals             String?
+  bonds              String?
+  flaws              String?
   
   // Méta
   is_active   Boolean     @default(true)
@@ -37,6 +62,7 @@ model Hero {
   
   // Relations
   images      HeroImage[]
+  image_variants HeroImageVariant[]
   dialogues   Dialogue[]
   player_heroes PlayerHero[]
   
@@ -56,6 +82,27 @@ model HeroImage {
   
   @@unique([hero_id, image_type, is_default])
   @@map("hero_images")
+}
+
+// Variantes d'images haute/basse résolution pour héros
+model HeroImageVariant {
+  id            String   @id @default(cuid())
+  hero_id       String
+  base_type     String   // 'portrait' ou 'icon'
+  resolution    String   // 'high' (1024x1024) ou 'low' (256x256)
+  emotion       String?  // 'neutral', 'happy', 'sad', 'angry', 'surprised' (null pour icons)
+  usage_context String   // 'dialogue' ou 'map_icon'
+  format        String   @default("webp")
+  url           String   // Chemin relatif ou URL Supabase Storage
+  width         Int
+  height        Int
+  is_default    Boolean  @default(false)
+  created_at    DateTime @default(now())
+  
+  hero          Hero     @relation(fields: [hero_id], references: [id], onDelete: Cascade)
+  
+  @@unique([hero_id, base_type, resolution, emotion])
+  @@map("hero_image_variants")
 }
 
 // Lieux de la carte

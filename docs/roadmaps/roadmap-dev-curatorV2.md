@@ -26,11 +26,98 @@ Cette roadmap définit les **tâches côté développeur** pour préparer et int
 
 **Objectif** : Préparer la structure DB et documenter les besoins pour le curator
 
+**Outils** : Supabase MCP (Model Context Protocol) pour gestion directe DB
+
+---
+
 ### 0.1 - Extension du schéma Prisma
 
 **Fichier** : `prisma/schema.prisma`
 
-**Nouveaux modèles** :
+**Statut** : ✅ PARTIELLEMENT COMPLÉTÉ (24 nov 2025)
+- ✅ Champs D&D 5e ajoutés (`dnd_strength`, `dnd_dexterity`, etc.)
+- ✅ Champs narratifs ajoutés (`voice`, `secret`, `arc_day1/2/3`)
+- ✅ Table `hero_image_variants` créée
+- ⏳ Relations héros à ajouter
+- ⏳ Ambient texts à ajouter
+- ⏳ Mission choices à ajouter
+
+**Modifications déjà appliquées via migration Supabase** :
+
+```prisma
+model Hero {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  name        String
+  title       String
+  description String
+  lore        String      @db.Text
+  
+  // Textes narratifs (✅ ajouté)
+  voice       String?     @db.Text
+  secret      String?     @db.Text
+  arc_day1    String?     @db.Text
+  arc_day2    String?     @db.Text
+  arc_day3    String?     @db.Text
+  
+  // Stats D&D 5e (✅ ajouté)
+  dnd_strength     Int?
+  dnd_dexterity    Int?
+  dnd_constitution Int?
+  dnd_intelligence Int?
+  dnd_wisdom       Int?
+  dnd_charisma     Int?
+  level            Int?
+  race             String?
+  class            String?
+  background       String?
+  personality_traits String[]
+  ideals           String?
+  bonds            String?
+  flaws            String?
+  
+  // Stats mécaniques jeu (existant)
+  strength    Int         @default(0)
+  diplomacy   Int         @default(0)
+  stealth     Int         @default(0)
+  intelligence Int        @default(0)
+  
+  // Relations
+  images         HeroImage[]
+  image_variants HeroImageVariant[]  // ✅ ajouté
+  dialogues      Dialogue[]
+  player_heroes  PlayerHero[]
+  
+  // ⏳ À ajouter :
+  // relations_a  HeroRelationship[] @relation("hero_a_relations")
+  // relations_b  HeroRelationship[] @relation("hero_b_relations")
+  
+  @@map("heroes")
+}
+
+// ✅ Table créée via migration
+model HeroImageVariant {
+  id            String   @id @default(cuid())
+  hero_id       String
+  base_type     String   // 'portrait' ou 'icon'
+  resolution    String   // 'high' (1024x1024) ou 'low' (256x256)
+  emotion       String?  // 'neutral', 'happy', 'sad', 'angry', 'surprised'
+  usage_context String   // 'dialogue' ou 'map_icon'
+  format        String   @default("webp")
+  url           String
+  width         Int
+  height        Int
+  is_default    Boolean  @default(false)
+  created_at    DateTime @default(now())
+  
+  hero          Hero     @relation(fields: [hero_id], references: [id], onDelete: Cascade)
+  
+  @@unique([hero_id, base_type, resolution, emotion])
+  @@map("hero_image_variants")
+}
+```
+
+**Nouveaux modèles à ajouter (via migrations futures)** :
 
 ```prisma
 // Relations entre héros (20 paires pour 5 héros)
@@ -156,16 +243,87 @@ model GameSave {
 }
 ```
 
-**Commandes** :
+**Commandes Supabase MCP** :
+```typescript
+// Utiliser outils MCP Supabase au lieu de Prisma CLI
+
+// 1. Créer migration pour nouveaux modèles
+mcp_supabase_apply_migration({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  name: "add_hero_relationships_and_ambient",
+  query: `-- SQL migration contenu ici`
+})
+
+// 2. Vérifier tables existantes
+mcp_supabase_list_tables({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  schemas: ["public"]
+})
+
+// 3. Générer types TypeScript après migrations
+mcp_supabase_generate_typescript_types({
+  project_id: "zpxsqocvclixvzzzhzhe"
+})
+```
+
+**Alternative traditionnelle** :
 ```bash
 npx prisma db push  # Dev
-npx prisma migrate dev --name add_curator_content_fields  # Prod
+npx prisma migrate dev --name add_remaining_curator_tables  # Prod
 npm run prisma:generate
 ```
 
 ---
 
-### 0.2 - Script seed placeholders
+### 0.2 - Vérifier contenu existant en DB
+
+**Outils** : Supabase MCP `execute_sql`
+
+**Objectif** : Vérifier que les 5 héros placeholder existent avec IDs corrects
+
+```typescript
+// Via MCP Supabase
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: `
+    SELECT id, slug, name, description, 
+           dnd_strength, race, class
+    FROM heroes 
+    ORDER BY slug;
+  `
+})
+
+// Vérifier structure image_variants
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: `
+    SELECT COUNT(*) as total_variants,
+           COUNT(DISTINCT hero_id) as heroes_with_variants
+    FROM hero_image_variants;
+  `
+})
+```
+
+**Alternative via psql** :
+```bash
+psql $DATABASE_URL -c "SELECT id, slug, name FROM heroes LIMIT 5;"
+```
+
+**Résultat attendu** :
+```
+id                    | slug  | name  | description         | dnd_strength | race | class
+cfcb7953...          | bjorn | Bjorn | [TO_ENRICH] ou desc | NULL         | NULL | NULL
+ce86dd7d...          | owen  | Owen  | [TO_ENRICH] ou desc | NULL         | NULL | NULL
+c6e8b883...          | vi    | Vi    | [TO_ENRICH] ou desc | NULL         | NULL | NULL
+c1305ab7...          | durun | Durun | [TO_ENRICH] ou desc | NULL         | NULL | NULL
+c10dbcf7...          | elira | Elira | [TO_ENRICH] ou desc | NULL         | NULL | NULL
+```
+
+---
+
+### 0.3 - Script seed placeholders (si besoin)
+
+**Note** : Selon `docs/etat-du-projet.md`, les 5 héros existent déjà en DB. Ce script n'est nécessaire QUE si la DB est vide.
 
 **Fichier** : `prisma/seed-placeholders.ts`
 
@@ -395,11 +553,39 @@ npm run prisma:seed-placeholders
 
 ---
 
-### 0.3 - Configuration accès DB Curator
+### 0.4 - Configuration accès Curator (OPTIONNEL)
 
-**Fichier** : `prisma/setup/curator_permissions.sql`
+**Note** : Pour l'instant, le curator utilisera la même connexion que le dev. Les permissions SQL ci-dessous sont pour une production future.
 
-```sql
+**Si permissions nécessaires, utiliser MCP Supabase** :
+
+```typescript
+// Via MCP Supabase (appliquer permissions)
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: `
+    -- Créer role avec permissions limitées
+    CREATE ROLE curator_role;
+    
+    -- TABLES CONTENU (read/write autorisé)
+    GRANT SELECT, INSERT, UPDATE ON heroes TO curator_role;
+    GRANT SELECT, INSERT, UPDATE ON hero_images TO curator_role;
+    GRANT SELECT, INSERT, UPDATE ON hero_image_variants TO curator_role;
+    -- ... autres tables de contenu ...
+    
+    -- TABLES SAVE (interdit)
+    REVOKE ALL ON game_saves FROM curator_role;
+    REVOKE ALL ON player_heroes FROM curator_role;
+    -- ... autres tables save ...
+    
+    -- Créer user curator
+    CREATE USER curator_pipeline WITH PASSWORD 'SECURE_PASSWORD';
+    GRANT curator_role TO curator_pipeline;
+  `
+})
+```
+
+**Alternative psql** :
 -- Créer role avec permissions limitées
 CREATE ROLE curator_role;
 
@@ -463,7 +649,45 @@ Ce document est le **cahier des charges** pour le curator (sans code technique).
 
 ### 0.5 - Validation et livraison
 
-**Checklist avant de contacter le curator** :
+**Checklist avant génération curator via Supabase MCP** :
+
+```typescript
+// 1. Vérifier structure tables
+mcp_supabase_list_tables({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  schemas: ["public"]
+})
+// Doit inclure: heroes, hero_image_variants, missions, dialogues, etc.
+
+// 2. Vérifier placeholders héros
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: "SELECT slug, name, race, class FROM heroes ORDER BY slug;"
+})
+// Doit retourner 5 héros (bjorn, durun, elira, owen, vi)
+
+// 3. Vérifier champs D&D existent
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: `
+    SELECT column_name, data_type 
+    FROM information_schema.columns 
+    WHERE table_name = 'heroes' 
+      AND column_name LIKE 'dnd_%'
+    ORDER BY column_name;
+  `
+})
+// Doit retourner: dnd_strength, dnd_dexterity, dnd_constitution, etc.
+
+// 4. Vérifier table hero_image_variants
+mcp_supabase_execute_sql({
+  project_id: "zpxsqocvclixvzzzhzhe",
+  query: "SELECT COUNT(*) FROM hero_image_variants;"
+})
+// Actuellement 0 (normal, images pas encore générées)
+```
+
+**Alternative bash** :
 
 ```bash
 # 1. Vérifier que le schéma est déployé
@@ -487,10 +711,11 @@ psql $DATABASE_URL_CURATOR -c "SELECT * FROM game_saves;"
 ```
 
 **À fournir au curator** :
-- ✅ `DATABASE_URL_CURATOR` (connexion avec permissions)
-- ✅ `docs/curator-specs.md` (spécifications contenu)
-- ✅ `docs/database.md` (schéma DB pour référence)
-- ✅ Liste des slugs existants (heroes, missions, buildings)
+- ✅ Connexion Supabase (via MCP ou DATABASE_URL)
+- ✅ `docs/curator/specs/curator-spec-heroes-enrichment.md` (spécifications Sprint 1)
+- ✅ `docs/curator/workflow-dev-curator.md` (workflow complet)
+- ✅ Liste des 5 héros existants avec IDs Supabase
+- ✅ Structure JSON de sortie attendue
 
 ---
 
@@ -1117,16 +1342,17 @@ const completeMission = async (missionId: string, success: boolean, choiceId?: s
 ## 📋 Checklist complète
 
 ### Phase 0 - Préparation (PRIORITAIRE)
-- [ ] Extension schéma Prisma (nouveaux modèles + champs)
-- [ ] Migration DB (`npx prisma db push`)
-- [ ] Script `seed-placeholders.ts`
-- [ ] Exécuter seed (`npm run prisma:seed-placeholders`)
-- [ ] Configuration permissions curator (`curator_permissions.sql`)
-- [ ] Créer `docs/curator-specs.md`
-- [ ] Validation DB (queries test)
-- [ ] Fournir credentials + docs au curator
+- [x] ~~Extension schéma Prisma (champs D&D + narratifs)~~ ✅ 24 nov 2025
+- [x] ~~Migration DB table `hero_image_variants`~~ ✅ 24 nov 2025
+- [x] ~~Migration DB champs D&D héros~~ ✅ 24 nov 2025
+- [x] ~~Créer `docs/curator/workflow-dev-curator.md`~~ ✅ 24 nov 2025
+- [x] ~~Créer `docs/curator/specs/curator-spec-heroes-enrichment.md`~~ ✅ 24 nov 2025
+- [ ] Ajouter modèles HeroRelationship, AmbientText, MissionChoice (si nécessaires Sprint 2+)
+- [ ] Vérifier héros existants via MCP Supabase (`execute_sql`)
+- [ ] Valider structure DB complète via MCP (`list_tables`)
+- [ ] Fournir credentials + specs au curator
 
-### Phase 1 - Contenu enrichi
+### Phase 1 - Contenu enrichi (APRÈS génération curator)
 - [ ] API route `/api/heroes/[id]/full`
 - [ ] API route `/api/missions/[id]/variant`
 - [ ] API route `/api/ambient/[type]/[context]`
